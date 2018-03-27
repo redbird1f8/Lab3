@@ -10,6 +10,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+
 #include <getopt.h>
 
 #include "find_min_max.h"
@@ -47,11 +52,19 @@ int main(int argc, char **argv) {
             array_size = atoi(optarg);
             // your code here
             // error handling
+            if(array_size <= 0)
+            {
+                return 1;
+            }
             break;
           case 2:
             pnum = atoi(optarg);
             // your code here
             // error handling
+            if(pnum <= 0)
+            {
+                return 1;
+            }
             break;
           case 3:
             with_files = true;
@@ -90,7 +103,22 @@ int main(int argc, char **argv) {
 
   struct timeval start_time;
   gettimeofday(&start_time, NULL);
-
+  
+  int io_id;
+  int pipefd[2];
+  if(with_files)
+  {
+      io_id = open("tmp.fl", O_RDWR | O_CREAT);
+  }
+  else
+  {
+      if(pipe(pipefd) == -1)
+      {
+          return 1;
+      }
+  }
+  int pecount = array_size/pnum;
+  
   for (int i = 0; i < pnum; i++) {
     pid_t child_pid = fork();
     if (child_pid >= 0) {
@@ -98,14 +126,29 @@ int main(int argc, char **argv) {
       active_child_processes += 1;
       if (child_pid == 0) {
         // child process
-
+        
         // parallel somehow
-
+        struct MinMax min_max;
+        min_max.min = INT_MAX;
+        min_max.max = INT_MIN;
+        int count = 0;
+        if(i == pnum-1)
+        {
+            min_max = GetMinMax(array, count, count + pecount + array_size%pnum);         
+        }
+        else
+        {
+            min_max = GetMinMax(array, count, count + pecount); 
+        }
         if (with_files) {
           // use files here
+          if(write(io_id, &min_max.min , 2*sizeof(int)));
         } else {
           // use pipe here
+          close(pipefd[0]);
+          if(write(io_id, &min_max.min ,2*sizeof(int)));
         }
+        printf("hi!!\n");
         return 0;
       }
 
@@ -117,10 +160,18 @@ int main(int argc, char **argv) {
 
   while (active_child_processes > 0) {
     // your code here
-
-    active_child_processes -= 1;
+    pid_t wpid = wait(NULL);
+    if(wpid == -1)
+    {
+        if(errno == ECHILD) break;
+    }
+    else
+    {
+        active_child_processes -= 1;
+    }
   }
 
+   
   struct MinMax min_max;
   min_max.min = INT_MAX;
   min_max.max = INT_MIN;
@@ -130,9 +181,13 @@ int main(int argc, char **argv) {
     int max = INT_MIN;
 
     if (with_files) {
-      // read from files
+      //    
+      read(io_id, &min, sizeof(int));
+      read(io_id, &max, sizeof(int));
     } else {
       // read from pipes
+      read(pipefd[0], &min, sizeof(int));
+      read(pipefd[0], &max, sizeof(int));
     }
 
     if (min < min_max.min) min_max.min = min;
