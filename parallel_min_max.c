@@ -105,16 +105,19 @@ int main(int argc, char **argv) {
   gettimeofday(&start_time, NULL);
   
   int io_id;
-  int pipefd[2];
+  int *pipefd = malloc(2*pnum*sizeof(int));
   if(with_files)
   {
       io_id = open("tmp.fl", O_RDWR | O_CREAT);
   }
   else
   {
-      if(pipe(pipefd) == -1)
+      for(int i = 0; i < pnum; ++i)
       {
-          return 1;
+          if(pipe(pipefd + 2*i) < 0)
+          {
+              return 1;
+          }
       }
   }
   int pecount = array_size/pnum;
@@ -131,24 +134,33 @@ int main(int argc, char **argv) {
         struct MinMax min_max;
         min_max.min = INT_MAX;
         min_max.max = INT_MIN;
-        int count = 0;
         if(i == pnum-1)
         {
-            min_max = GetMinMax(array, count, count + pecount + array_size%pnum);         
+            min_max = GetMinMax(array, i*pecount, (i+1)*pecount + array_size%pnum);
         }
         else
         {
-            min_max = GetMinMax(array, count, count + pecount); 
+            min_max = GetMinMax(array, i*pecount, (i+1)*pecount); 
         }
         if (with_files) {
           // use files here
-          if(write(io_id, &min_max.min , 2*sizeof(int)));
+          lseek(io_id, 2*sizeof(int)*i, SEEK_SET);
+          // if(write(io_id, &min_max.min , sizeof(int)));
+          // if(write(io_id, &min_max.min , sizeof(int)));
+          if(write(io_id, &min_max , 2*sizeof(int)));
         } else {
           // use pipe here
-          close(pipefd[0]);
-          if(write(io_id, &min_max.min ,2*sizeof(int)));
+          for (int j = 0; j < pnum; ++j) {
+              close(pipefd[2*j]);
+              if(j != i)
+              {
+                  close(pipefd[2*j + 1]);
+              }
+          }
+          if(write(pipefd[2*i + 1], &min_max.min , sizeof(int)));
+          if(write(pipefd[2*i + 1], &min_max.max , sizeof(int)));
         }
-        printf("hi!!\n");
+        // printf("hi!!\n");
         return 0;
       }
 
@@ -158,9 +170,10 @@ int main(int argc, char **argv) {
     }
   }
 
-  while (active_child_processes > 0) {
+  while (active_child_processes >= 0) {
     // your code here
     pid_t wpid = wait(NULL);
+    // printf("%d\n", active_child_processes);
     if(wpid == -1)
     {
         if(errno == ECHILD) break;
@@ -186,14 +199,14 @@ int main(int argc, char **argv) {
       read(io_id, &max, sizeof(int));
     } else {
       // read from pipes
-      read(pipefd[0], &min, sizeof(int));
-      read(pipefd[0], &max, sizeof(int));
+      read(pipefd[2*i], &min, sizeof(int));
+      read(pipefd[2*i], &max, sizeof(int));
     }
-
+    printf("min: %d, max: %d\n", min, max);
     if (min < min_max.min) min_max.min = min;
     if (max > min_max.max) min_max.max = max;
   }
-
+  free(pipefd);
   struct timeval finish_time;
   gettimeofday(&finish_time, NULL);
 
