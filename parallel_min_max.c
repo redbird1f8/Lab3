@@ -105,20 +105,25 @@ int main(int argc, char **argv) {
   gettimeofday(&start_time, NULL);
   
   int io_id;
-  int *pipefd = malloc(2*pnum*sizeof(int));
+  //int *pipefd = malloc(2*pnum*sizeof(int));
+  int pipefd[2];
   if(with_files)
   {
       io_id = open("tmp.fl", O_RDWR | O_CREAT);
   }
   else
   {
-      for(int i = 0; i < pnum; ++i)
+ /*     for(int i = 0; i < pnum; ++i)
       {
           if(pipe(pipefd + 2*i) < 0)
           {
               return 1;
           }
-      }
+      }*/
+          if(pipe(pipefd) < 0)
+          {
+              return 1;
+          }
   }
   int pecount = array_size/pnum;
   
@@ -144,13 +149,10 @@ int main(int argc, char **argv) {
         }
         if (with_files) {
           // use files here
-          lseek(io_id, 2*sizeof(int)*i, SEEK_SET);
-          // if(write(io_id, &min_max.min , sizeof(int)));
-          // if(write(io_id, &min_max.min , sizeof(int)));
-          if(write(io_id, &min_max , 2*sizeof(int)));
+          pwrite(io_id, &min_max, 2*sizeof(int), 2*sizeof(int)*i);
         } else {
           // use pipe here
-          for (int j = 0; j < pnum; ++j) {
+/*          for (int j = 0; j < pnum; ++j) {
               close(pipefd[2*j]);
               if(j != i)
               {
@@ -158,7 +160,9 @@ int main(int argc, char **argv) {
               }
           }
           if(write(pipefd[2*i + 1], &min_max.min , sizeof(int)));
-          if(write(pipefd[2*i + 1], &min_max.max , sizeof(int)));
+          if(write(pipefd[2*i + 1], &min_max.max , sizeof(int)));*/
+          close(pipefd[0]);
+          write(pipefd[1], &min_max , 2*sizeof(int));
         }
         // printf("hi!!\n");
         return 0;
@@ -169,7 +173,7 @@ int main(int argc, char **argv) {
       return 1;
     }
   }
-
+  close(pipefd[1]);
   while (active_child_processes >= 0) {
     // your code here
     pid_t wpid = wait(NULL);
@@ -184,7 +188,7 @@ int main(int argc, char **argv) {
     }
   }
 
-   
+  
   struct MinMax min_max;
   min_max.min = INT_MAX;
   min_max.max = INT_MIN;
@@ -199,14 +203,16 @@ int main(int argc, char **argv) {
       read(io_id, &max, sizeof(int));
     } else {
       // read from pipes
-      read(pipefd[2*i], &min, sizeof(int));
-      read(pipefd[2*i], &max, sizeof(int));
+      //read(pipefd[2*i], &min, sizeof(int));
+      //read(pipefd[2*i], &max, sizeof(int));
+      read(pipefd[0], &min, sizeof(int));
+      read(pipefd[0], &max, sizeof(int));
     }
     printf("min: %d, max: %d\n", min, max);
     if (min < min_max.min) min_max.min = min;
     if (max > min_max.max) min_max.max = max;
   }
-  free(pipefd);
+  //free(pipefd);
   struct timeval finish_time;
   gettimeofday(&finish_time, NULL);
 
